@@ -1,0 +1,59 @@
+{
+  "title": "PR Review Bot",
+  "uid": "pr-review-bot",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total Reviews",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "sum(pr_reviews_total)", "legendFormat": "total"}]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total LLM Cost (USD)",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "pr_cost_usd_total", "legendFormat": "cost"}],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Review Latency (p95)",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 6},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(pr_review_latency_ms_bucket[5m]))",
+          "legendFormat": "p95 latency ms"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Issues Found by Category",
+      "gridPos": {"x": 0, "y": 10, "w": 12, "h": 6},
+      "targets": [
+        {"expr": "sum by (category) (rate(pr_issues_total[5m]))", "legendFormat": "{{category}}"}
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Token Usage",
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 6},
+      "targets": [
+        {"expr": "rate(pr_tokens_total[5m])", "legendFormat": "{{type}} tokens/s"}
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "RAG Chunks Indexed",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "rag_chunks_indexed_total", "legendFormat": "chunks"}]
+    }
+  ]
+}
