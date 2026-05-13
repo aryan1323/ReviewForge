@@ -21,6 +21,7 @@ from app.metrics.prometheus import (
     tokens_used_total,
 )
 from app.models import PullRequest, Repository, Review, ReviewComment, ReviewMetric
+from app.models.user_config import UserConfig
 from app.rag.indexer import index_repository
 from app.rag.retriever import get_relevant_context
 from app.services.github_service import GitHubService
@@ -43,6 +44,7 @@ async def _review_pr_async(pr_id: str, repo_full_name: str, pr_number: int) -> N
             .where(PullRequest.id == pr_id)
             .options(selectinload(PullRequest.repository))
         )
+
         pr = result.scalar_one()
         repo: Repository = pr.repository
 
@@ -53,8 +55,15 @@ async def _review_pr_async(pr_id: str, repo_full_name: str, pr_number: int) -> N
         await db.commit()
         await db.refresh(review)
 
-        github = GitHubService()
-        llm = LLMService()
+        # Load user config for this repo's owner
+        user_config = None
+        if repo.user_id:
+            cfg_result = await db.execute(select(UserConfig).where(UserConfig.user_id == repo.user_id))
+            user_config = cfg_result.scalar_one_or_none()
+
+        github_token = (user_config and user_config.github_token) or settings.GITHUB_TOKEN
+        github = GitHubService(token=github_token)
+        llm = LLMService(user_config=user_config)
 
         try:
             # 1. Index repo on first run (if no chunks yet)
@@ -112,12 +121,7 @@ async def _review_pr_async(pr_id: str, repo_full_name: str, pr_number: int) -> N
 
             await db.flush()
 
-            # 8. Post to GitHub
-            await github.post_review_comments(
-                repo_full_name, pr_number, pr.head_sha, comment_dicts, result_data.summary
-            )
-
-            # 9. Write ReviewMetric
+            # 8. Write ReviewMetric
             today = date.today()
             week_start = today - timedelta(days=today.weekday())
             counts = _count_by_category(result_data.issues)

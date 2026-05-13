@@ -5,8 +5,13 @@ import { DashboardPage } from './pages/DashboardPage'
 import { PRListPage } from './pages/PRListPage'
 import { PRDetailPage } from './pages/PRDetailPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { LoginPage } from './pages/LoginPage'
+import { RegisterPage } from './pages/RegisterPage'
+import { ProtectedRoute } from './components/ProtectedRoute'
+import { useAuth } from './context/AuthContext'
 
-export default function App() {
+function AppShell() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
@@ -18,10 +23,25 @@ export default function App() {
             <Route path="/prs"       element={<PRListPage />} />
             <Route path="/prs/:id"   element={<PRDetailPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/settings"  element={<SettingsPage />} />
             <Route path="*"          element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </div>
     </div>
+  )
+}
+
+export default function App() {
+  const { isAuthenticated } = useAuth()
+
+  return (
+    <Routes>
+      <Route path="/login"    element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route path="/register" element={isAuthenticated ? <Navigate to="/" replace /> : <RegisterPage />} />
+      <Route path="/*" element={
+        <ProtectedRoute><AppShell /></ProtectedRoute>
+      } />
+    </Routes>
   )
 }

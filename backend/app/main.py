@@ -8,7 +8,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from app.config import get_settings
 from app.database import engine
 from app.models.base import Base
-from app.routers import analytics, health, pull_requests, webhook
+from app.routers import analytics, auth, health, pull_requests, webhook
+from app.routers import config_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,14 +34,17 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(webhook.router)
     app.include_router(pull_requests.router, prefix="/api")
     app.include_router(analytics.router, prefix="/api")
+    app.include_router(config_router.router, prefix="/api")
 
     Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 

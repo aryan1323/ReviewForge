@@ -4,15 +4,15 @@ import json
 import logging
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.models import PullRequest, Repository
+from app.models.user_config import UserConfig
 from app.schemas.webhook import GitHubWebhookPayload
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 _HANDLED_ACTIONS = {"opened", "synchronize", "reopened"}
 
@@ -20,6 +20,7 @@ _HANDLED_ACTIONS = {"opened", "synchronize", "reopened"}
 class WebhookService:
     async def handle(
         self,
+        user_id: str,
         event: str,
         signature: str,
         body: bytes,
@@ -37,16 +38,21 @@ class WebhookService:
             logger.info("Ignoring PR action: %s", action)
             return
 
-        # Verify HMAC signature before any DB writes
-        self._verify_signature(body, signature, settings.GITHUB_WEBHOOK_SECRET)
+        # Look up this user's config for webhook secret + github token
+        result = await db.execute(select(UserConfig).where(UserConfig.user_id == user_id))
+        user_config = result.scalar_one_or_none()
+        if not user_config or not user_config.github_webhook_secret:
+            raise HTTPException(status_code=400, detail="User has not configured a webhook secret")
+
+        self._verify_signature(body, signature, user_config.github_webhook_secret)
 
         payload = GitHubWebhookPayload(**payload_data)
-        repo = await self._get_or_create_repo(payload, db)
+        repo = await self._get_or_create_repo(payload, user_id, user_config, db)
 
         pr = await self._upsert_pull_request(payload, repo, db)
         await db.commit()
 
-        # Enqueue rq job (import here to avoid circular imports at module load)
+        from rq import Retry
         from app.tasks.queue import review_queue
         from app.tasks.review_tasks import review_pr
 
@@ -57,7 +63,7 @@ class WebhookService:
                 "repo_full_name": repo.full_name,
                 "pr_number": pr.number,
             },
-            retry=3,
+            retry=Retry(max=3),
         )
         logger.info("Enqueued review job %s for PR #%s", job.id, pr.number)
 
@@ -67,11 +73,10 @@ class WebhookService:
             secret.encode(), body, hashlib.sha256
         ).hexdigest()
         if not hmac.compare_digest(expected, signature):
-            from fastapi import HTTPException
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     async def _get_or_create_repo(
-        self, payload: GitHubWebhookPayload, db: AsyncSession
+        self, payload: GitHubWebhookPayload, user_id: str, user_config: UserConfig, db: AsyncSession
     ) -> Repository:
         result = await db.execute(
             select(Repository).where(Repository.github_id == payload.repository.id)
@@ -81,7 +86,8 @@ class WebhookService:
             repo = Repository(
                 github_id=payload.repository.id,
                 full_name=payload.repository.full_name,
-                webhook_secret=settings.GITHUB_WEBHOOK_SECRET,
+                webhook_secret=user_config.github_webhook_secret,
+                user_id=user_id,
             )
             db.add(repo)
             await db.flush()

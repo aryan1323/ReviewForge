@@ -1,14 +1,24 @@
-import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, GitPullRequest, BarChart3, Bot, Activity } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, GitPullRequest, BarChart3, Bot, Activity, Settings, LogOut } from 'lucide-react'
 import clsx from 'clsx'
+import { useAuth } from '../../context/AuthContext'
 
 const nav = [
-  { to: '/',          label: 'Dashboard',   icon: LayoutDashboard },
+  { to: '/',          label: 'Dashboard',    icon: LayoutDashboard },
   { to: '/prs',       label: 'Pull Requests', icon: GitPullRequest },
-  { to: '/analytics', label: 'Analytics',   icon: BarChart3 },
+  { to: '/analytics', label: 'Analytics',    icon: BarChart3 },
+  { to: '/settings',  label: 'Settings',     icon: Settings },
 ]
 
 export function Sidebar() {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+
+  function handleLogout() {
+    logout()
+    navigate('/login')
+  }
+
   return (
     <aside className="w-56 shrink-0 bg-sidebar border-r border-border flex flex-col min-h-screen">
       {/* Logo */}
@@ -44,12 +54,19 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Status indicator */}
-      <div className="px-5 py-4 border-t border-border">
-        <div className="flex items-center gap-2">
+      {/* Footer */}
+      <div className="px-3 py-4 border-t border-border space-y-1">
+        <div className="flex items-center gap-2 px-3 py-1">
           <Activity className="w-3.5 h-3.5 text-emerald-400" />
           <span className="text-xs text-slate-500">Worker active</span>
         </div>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          Sign out
+        </button>
       </div>
     </aside>
   )

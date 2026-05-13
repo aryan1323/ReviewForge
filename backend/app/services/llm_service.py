@@ -70,12 +70,14 @@ _SEVERITY_WEIGHTS = {"critical": 4.0, "high": 2.0, "medium": 1.0, "low": 0.25}
 
 
 class LLMService:
-    def __init__(self) -> None:
+    def __init__(self, user_config=None) -> None:
+        s = get_settings()
         self._client = AsyncAzureOpenAI(
-            api_key=settings.AZURE_OPENAI_API_KEY,
-            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
-            api_version=settings.AZURE_OPENAI_API_VERSION,
+            api_key=(user_config and user_config.azure_openai_api_key) or s.AZURE_OPENAI_API_KEY,
+            azure_endpoint=(user_config and user_config.azure_openai_endpoint) or s.AZURE_OPENAI_ENDPOINT,
+            api_version=(user_config and user_config.azure_api_version) or s.AZURE_OPENAI_API_VERSION,
         )
+        self._deployment = (user_config and user_config.azure_deployment) or s.AZURE_DEPLOYMENT
 
     async def review(self, diff_text: str, context_chunks: list[str]) -> ReviewResult:
         context = "\n\n---\n\n".join(context_chunks) if context_chunks else "(no relevant context retrieved)"
@@ -83,7 +85,7 @@ class LLMService:
 
         t0 = time.monotonic()
         response = await self._client.chat.completions.create(
-            model=settings.AZURE_DEPLOYMENT,
+            model=self._deployment,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": user_msg},

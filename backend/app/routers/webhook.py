@@ -7,8 +7,9 @@ from app.services.webhook_service import WebhookService
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 
 
-@router.post("/github", status_code=202)
+@router.post("/github/{user_id}", status_code=202)
 async def github_webhook(
+    user_id: str,
     request: Request,
     x_hub_signature_256: str = Header(...),
     x_github_event: str = Header(...),
@@ -16,6 +17,7 @@ async def github_webhook(
 ) -> dict:
     body = await request.body()
     await WebhookService().handle(
+        user_id=user_id,
         event=x_github_event,
         signature=x_hub_signature_256,
         body=body,

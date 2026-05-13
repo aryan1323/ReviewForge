@@ -71,12 +71,32 @@ class GitHubService:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(url, headers=self._headers, json=payload)
             if resp.status_code == 422:
-                logger.warning("GitHub rejected review (422): %s", resp.text)
+                logger.warning("GitHub rejected inline comments (422), falling back to review body")
+                fallback_body = self._build_fallback_body(summary, comments)
+                fallback_payload = {
+                    "commit_id": head_sha,
+                    "body": fallback_body,
+                    "event": "COMMENT",
+                    "comments": [],
+                }
+                resp = await client.post(url, headers=self._headers, json=fallback_payload)
+                resp.raise_for_status()
                 return []
             resp.raise_for_status()
             data = resp.json()
 
         return [c.get("id", 0) for c in data.get("comments", [])]
+
+    def _build_fallback_body(self, summary: str, comments: list[dict]) -> str:
+        lines = [summary or "Automated code review by PR Bot.", ""]
+        for c in comments:
+            severity_emoji = {"low": "ℹ️", "medium": "⚠️", "high": "🔴", "critical": "🚨"}
+            emoji = severity_emoji.get(c["severity"], "ℹ️")
+            lines.append(f"**{c['file_path']}:{c['line_number']}** — {emoji} [{c['category'].upper()} / {c['severity'].upper()}] {c['message']}")
+            if c.get("suggestion"):
+                lines.append(f"\n> **Suggestion:** {c['suggestion']}")
+            lines.append("")
+        return "\n".join(lines)
 
     @staticmethod
     def _format_comment_body(comment: dict) -> str:
