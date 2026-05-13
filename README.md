@@ -1,108 +1,186 @@
-# GitHub PR Review Bot
+<div align="center">
 
-Automated code review bot powered by **GPT-4o** + **RAG (pgvector)**. When a developer opens a PR, the bot fetches the diff, retrieves relevant codebase context from a vector store, and posts inline review comments directly on the PR.
+# ReviewForge
 
-## Architecture
+**AI-powered Pull Request reviews — instant, inline, and on your dashboard.**
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-review--forge--gamma.vercel.app-6366f1?style=for-the-badge&logo=vercel)](https://review-forge-gamma.vercel.app)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)](https://react.dev)
+[![pgvector](https://img.shields.io/badge/pgvector-RAG-336791?style=flat-square&logo=postgresql)](https://github.com/pgvector/pgvector)
+
+</div>
+
+---
+
+## What it does
+
+Every time a developer opens or updates a Pull Request, ReviewForge automatically:
+
+1. **Receives** the GitHub webhook and queues a background review job
+2. **Understands your codebase** — clones and indexes the repo into a vector store (pgvector) so the AI has full context, not just the diff
+3. **Reviews with AI** — sends the diff + semantically relevant code chunks to Azure OpenAI for a structured, JSON-schema review
+4. **Scores risk** — computes a 0–10 risk score weighted by issue severity (critical × 4, high × 2, medium × 1, low × 0.25)
+5. **Surfaces results** on a live React dashboard — no GitHub comment spam, just clean insights
+
+---
+
+## Live Demo
+
+**Frontend:** [https://review-forge-gamma.vercel.app](https://review-forge-gamma.vercel.app)
+
+Register an account, add your API keys in Settings, configure the webhook on any GitHub repo, and raise a PR — the review appears on the dashboard within seconds.
+
+---
+
+## How it works
 
 ```
-GitHub Webhook
-      ↓
-  FastAPI API  →  Redis (rq queue)
-      ↓                  ↓
-  PostgreSQL       rq Worker
-  (pgvector)            ↓
-                   1. Fetch diff (GitHub API)
-                   2. RAG retrieve (pgvector cosine search)
-                   3. GPT-4o review (structured JSON)
-                   4. Post inline comments (GitHub API)
-                   5. Store metrics → Prometheus → Grafana
+┌─────────────────────────────────────────────────────────┐
+│                   GitHub Repository                      │
+│   Developer opens PR  →  Webhook fires                  │
+└───────────────────────────┬─────────────────────────────┘
+                            │  POST /webhook/github/{user_id}
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                    FastAPI Backend                        │
+│   ① Verify HMAC signature (per-user secret)              │
+│   ② Upsert PR record in PostgreSQL                       │
+│   ③ Enqueue job → Redis (rq)                             │
+│   ④ Return 202 immediately                               │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                     rq Worker                            │
+│                                                          │
+│  ┌──────────┐   ┌───────────┐   ┌─────────────────┐    │
+│  │ RAG Index │ → │  Retrieve │ → │  Azure OpenAI   │    │
+│  │ (pgvector)│   │ top-10    │   │  (o4-mini)      │    │
+│  │ on 1st PR │   │ chunks by │   │  structured JSON│    │
+│  └──────────┘   │ cosine sim│   │  review output  │    │
+│                  └───────────┘   └────────┬────────┘    │
+│                                           │              │
+│  ┌────────────────────────────────────────▼──────────┐  │
+│  │  Persist: Review + Comments + Metrics in Postgres  │  │
+│  └───────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│               React Dashboard (Vercel)                   │
+│   PR list · Risk scores · Inline comments · Analytics   │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Stack
+---
 
-| Layer | Technology |
-|---|---|
-| API | FastAPI + uvicorn |
-| Task queue | rq (Redis Queue) |
-| Message broker | Redis 7 |
-| Database | PostgreSQL 16 + pgvector |
-| LLM | OpenAI GPT-4o |
-| Embeddings | OpenAI text-embedding-3-small |
-| Monitoring | Prometheus + Grafana |
-| CI/CD | GitHub Actions + GHCR |
+## Tech Stack
 
-## Quick Start
+| Layer | Technology | Why |
+|---|---|---|
+| API | FastAPI + uvicorn | Async, fast, auto-docs |
+| Task queue | rq (Redis Queue) | Lightweight, Redis-native |
+| Vector store | PostgreSQL + pgvector | No extra service — reuses existing DB |
+| LLM | Azure OpenAI (o4-mini) | Structured JSON output, low temp |
+| Embeddings | text-embedding-3-small | Fast + cheap, 1536-dim vectors |
+| Auth | JWT (python-jose) + bcrypt | Stateless, per-user API keys |
+| Frontend | React 18 + Vite + Tailwind | Fast builds, clean UI |
+| Hosting | Vercel + Render + Supabase + Upstash | 100% free tier |
 
-### 1. Configure environment
+---
+
+## Key Features
+
+- **Per-user accounts** — register, log in, manage your own API keys and webhook secret
+- **RAG-powered context** — the AI sees relevant source files, not just the changed lines
+- **Risk scoring** — every PR gets a 0–10 score so you can prioritize reviews
+- **Analytics dashboard** — bug trends, token costs, latency distribution, severity breakdown
+- **Public repo support** — GitHub token is optional; only needed for private repos
+- **Single-service deploy** — rq worker runs as a daemon thread inside the API process (no separate worker dyno needed)
+
+---
+
+## Self-hosting (Docker)
 
 ```bash
+# 1. Clone and configure
+git clone https://github.com/aryan1323/ReviewForge.git
+cd ReviewForge
 cp .env.example .env
-# Fill in GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, OPENAI_API_KEY
-```
+# Fill in DATABASE_URL, REDIS_URL, SECRET_KEY, and Azure OpenAI vars
 
-### 2. Start all services
-
-```bash
+# 2. Start everything
 docker compose up --build
-```
 
-This starts: PostgreSQL (with pgvector), Redis, API, rq worker, Prometheus, Grafana.
-
-### 3. Run database migrations
-
-```bash
+# 3. Run migrations
 docker compose exec api alembic upgrade head
+
+# Services:
+#   API        →  http://localhost:8000
+#   Frontend   →  http://localhost:3000
+#   Prometheus →  http://localhost:9090
+#   Grafana    →  http://localhost:3001  (admin / admin)
 ```
 
-### 4. Register the webhook on your GitHub repo
+---
 
-1. Expose the API publicly (e.g. with ngrok): `ngrok http 8000`
-2. GitHub repo → Settings → Webhooks → Add webhook
-   - Payload URL: `https://<your-ngrok>.ngrok.io/webhook/github`
+## Connecting a GitHub Repo
+
+1. Register at the frontend and go to **Settings**
+2. Add your API keys (Azure OpenAI required; GitHub token only for private repos)
+3. Copy your unique **Webhook URL** from the Settings page
+4. In your GitHub repo → **Settings → Webhooks → Add webhook**
+   - Payload URL: *(paste the URL from Settings)*
    - Content type: `application/json`
-   - Secret: matches `GITHUB_WEBHOOK_SECRET` in `.env`
-   - Events: **Pull requests**
+   - Secret: *(paste the GitHub Webhook Secret you set in Settings)*
+   - Events: **Pull requests** only
+5. Open or reopen a PR — the review appears on your dashboard within ~30 seconds
 
-### 5. Open a PR on your repo
+---
 
-The bot will:
-- Receive the webhook → queue a review job
-- Clone & index the repo into pgvector (first time only)
-- Retrieve relevant code context
-- Call GPT-4o for a structured review
-- Post inline comments on the PR
-
-## API Endpoints
+## API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/webhook/github` | GitHub webhook receiver |
-| `GET` | `/api/prs` | List reviewed PRs (paginated) |
-| `GET` | `/api/prs/{id}` | PR detail with comments |
-| `GET` | `/api/analytics` | Aggregated metrics |
+| `POST` | `/webhook/github/{user_id}` | GitHub webhook receiver (HMAC verified) |
+| `POST` | `/auth/register` | Create account |
+| `POST` | `/auth/login` | Get JWT token |
+| `GET` | `/api/prs` | List reviewed PRs (paginated, filterable) |
+| `GET` | `/api/prs/{id}` | PR detail with all inline comments |
+| `GET` | `/api/analytics` | Aggregated metrics (last N weeks) |
+| `GET/PUT` | `/api/config` | Read / save user API keys |
 | `GET` | `/health` | DB + Redis liveness check |
-| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/metrics` | Prometheus scrape endpoint |
 
-## Monitoring
-
-- Prometheus: http://localhost:9090
-- Grafana: http://localhost:3001 (admin / admin)
+---
 
 ## Running Tests
 
 ```bash
 cd backend
 pip install -r requirements.txt
-pytest tests/ -v --cov=app
+pytest tests/ -v --cov=app --cov-report=term-missing
 ```
+
+Tests use `unittest.mock` — no live DB or API calls required.
+
+---
 
 ## Environment Variables
 
-| Variable | Description |
-|---|---|
-| `GITHUB_TOKEN` | Personal access token with `repo` scope |
-| `GITHUB_WEBHOOK_SECRET` | HMAC secret set in GitHub webhook settings |
-| `OPENAI_API_KEY` | OpenAI API key for GPT-4o + embeddings |
-| `DATABASE_URL` | PostgreSQL asyncpg connection string |
-| `SYNC_DATABASE_URL` | PostgreSQL sync connection string (Alembic) |
-| `REDIS_URL` | Redis connection URL |
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | Async PostgreSQL URL (`postgresql+asyncpg://...`) |
+| `SYNC_DATABASE_URL` | Yes | Sync URL for Alembic migrations |
+| `REDIS_URL` | Yes | Redis URL (`redis://` or `rediss://` for TLS) |
+| `SECRET_KEY` | Yes | JWT signing secret — use a long random string |
+| `AZURE_OPENAI_API_KEY` | No* | Set globally or per-user in Settings |
+| `AZURE_OPENAI_ENDPOINT` | No* | Azure OpenAI endpoint URL |
+| `AZURE_DEPLOYMENT` | No* | Chat model deployment name |
+| `AZURE_API_VERSION` | No* | Azure OpenAI API version |
+| `AZURE_EMBEDDING_DEPLOYMENT` | No* | Embedding model deployment name |
+| `GITHUB_TOKEN` | No | Global fallback token (users set their own) |
+| `CORS_ORIGINS` | No | JSON list of allowed origins |
+
+*Can be set per-user in the Settings page instead of as env vars.
