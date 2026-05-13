@@ -13,19 +13,22 @@ _GITHUB_API = "https://api.github.com"
 
 class GitHubService:
     def __init__(self, token: str | None = None) -> None:
-        self._token = token or settings.GITHUB_TOKEN
-        self._headers = {
-            "Authorization": f"Bearer {self._token}",
+        self._token = token or settings.GITHUB_TOKEN or None
+        base_headers = {
             "Accept": "application/vnd.github.v3+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        if self._token:
+            base_headers["Authorization"] = f"Bearer {self._token}"
+        self._headers = base_headers
 
     async def get_pr_diff(self, repo: str, pr_number: int) -> str:
-        """Fetch raw unified diff for a pull request."""
         url = f"{_GITHUB_API}/repos/{repo}/pulls/{pr_number}"
         headers = {**self._headers, "Accept": "application/vnd.github.v3.diff"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(url, headers=headers)
+            if resp.status_code == 404 and not self._token:
+                raise ValueError(f"Repo {repo} not found — it may be private. Add a GitHub token in Settings.")
             resp.raise_for_status()
             return resp.text
 

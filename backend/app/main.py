@@ -19,11 +19,19 @@ settings = get_settings()
 
 def _start_worker():
     from rq import SimpleWorker
+    from rq.timeouts import BaseDeathPenalty
     from app.tasks.queue import redis_conn
 
+    class NoopDeathPenalty(BaseDeathPenalty):
+        def setup_death_penalty(self):
+            pass
+        def cancel_death_penalty(self):
+            pass
+
     class ThreadSafeWorker(SimpleWorker):
+        death_penalty_class = NoopDeathPenalty
         def _install_signal_handlers(self):
-            pass  # signal handlers don't work in threads
+            pass
 
     worker = ThreadSafeWorker(["reviews"], connection=redis_conn)
     logger.info("rq worker starting inside API process")

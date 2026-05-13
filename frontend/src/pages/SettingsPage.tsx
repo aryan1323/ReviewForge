@@ -53,7 +53,8 @@ export function SettingsPage() {
 
   function copyWebhook() {
     if (!config.webhook_url) return
-    const full = `${window.location.origin}${config.webhook_url}`
+    const base = import.meta.env.VITE_API_URL || window.location.origin
+    const full = `${base}${config.webhook_url}`
     navigator.clipboard.writeText(full)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -75,7 +76,7 @@ export function SettingsPage() {
         <div className="flex gap-2">
           <input
             readOnly
-            value={config.webhook_url ? `${window.location.origin}${config.webhook_url}` : ''}
+            value={config.webhook_url ? `${import.meta.env.VITE_API_URL || window.location.origin}${config.webhook_url}` : ''}
             className="flex-1 bg-white/5 border border-border rounded-lg px-3 py-2 text-xs text-slate-300 font-mono"
           />
           <button onClick={copyWebhook} className="px-3 py-2 rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-accent transition-colors">
@@ -87,13 +88,19 @@ export function SettingsPage() {
       <form onSubmit={handleSave} className="card space-y-4">
         <h2 className="text-sm font-semibold text-slate-200">API Keys</h2>
 
-        <Field label="GitHub Token" name="github_token"
-          value={config.github_token ?? ''} onChange={v => set('github_token', v)}
-          placeholder="ghp_..." />
+        <div>
+          <Field label="GitHub Token" name="github_token"
+            value={config.github_token ?? ''} onChange={v => set('github_token', v)}
+            placeholder="ghp_... (leave empty for public repos)" />
+          <p className="text-xs text-slate-500 mt-1">Only required for <span className="text-amber-400">private repositories</span>. Public repos work without a token.</p>
+        </div>
 
-        <Field label="GitHub Webhook Secret" name="github_webhook_secret"
-          value={config.github_webhook_secret ?? ''} onChange={v => set('github_webhook_secret', v)}
-          placeholder="any secret string you choose" />
+        <div>
+          <Field label="GitHub Webhook Secret" name="github_webhook_secret"
+            value={config.github_webhook_secret ?? ''} onChange={v => set('github_webhook_secret', v)}
+            placeholder="any secret string you choose" />
+          <p className="text-xs text-slate-500 mt-1">Set this same value in your GitHub webhook → <span className="text-slate-300">Settings → Webhooks → Edit → Secret</span> field.</p>
+        </div>
 
         <div className="border-t border-border pt-4">
           <p className="text-xs text-slate-500 mb-4">Azure OpenAI</p>
