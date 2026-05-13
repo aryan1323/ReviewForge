@@ -20,7 +20,12 @@ settings = get_settings()
 def _start_worker():
     from rq import SimpleWorker
     from app.tasks.queue import redis_conn
-    worker = SimpleWorker(["reviews"], connection=redis_conn)
+
+    class ThreadSafeWorker(SimpleWorker):
+        def _install_signal_handlers(self):
+            pass  # signal handlers don't work in threads
+
+    worker = ThreadSafeWorker(["reviews"], connection=redis_conn)
     logger.info("rq worker starting inside API process")
     worker.work()
 
