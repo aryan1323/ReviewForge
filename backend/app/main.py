@@ -28,8 +28,9 @@ def _start_worker():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting PR Review Bot API")
-    t = threading.Thread(target=_start_worker, daemon=True)
+    t = threading.Thread(target=_start_worker, daemon=True, name="rq-worker")
     t.start()
+    logger.info("rq worker thread started: %s", t.is_alive())
     yield
     await engine.dispose()
 
