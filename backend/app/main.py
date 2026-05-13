@@ -1,4 +1,5 @@
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,9 +17,19 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def _start_worker():
+    from rq import Worker
+    from app.tasks.queue import redis_conn
+    worker = Worker(["reviews"], connection=redis_conn)
+    logger.info("rq worker starting inside API process")
+    worker.work()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting PR Review Bot API")
+    t = threading.Thread(target=_start_worker, daemon=True)
+    t.start()
     yield
     await engine.dispose()
 
