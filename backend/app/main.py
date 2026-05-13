@@ -18,9 +18,9 @@ settings = get_settings()
 
 
 def _start_worker():
-    from rq import Worker
+    from rq import SimpleWorker
     from app.tasks.queue import redis_conn
-    worker = Worker(["reviews"], connection=redis_conn)
+    worker = SimpleWorker(["reviews"], connection=redis_conn)
     logger.info("rq worker starting inside API process")
     worker.work()
 
